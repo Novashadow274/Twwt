@@ -1,17 +1,14 @@
 import os
 import requests
 from pathlib import Path
+import time
 
-def download_media(url: str) -> str:
+def download_media(url: str, headers: dict) -> str:
     temp_dir = Path('temp_media')
     temp_dir.mkdir(exist_ok=True)
     try:
         ext = os.path.splitext(url.split('?')[0])[1] or '.jpg'
         path = temp_dir / f"{os.urandom(8).hex()}{ext}"
-        
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        }
         
         with requests.get(url, headers=headers, stream=True, timeout=10) as r:
             r.raise_for_status()
