@@ -1,55 +1,46 @@
-# config.py
-# Load configuration, mappings, and environment variables.
-
 import os
 import json
+from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
 
+# Telegram Config
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 TELEGRAM_ADMIN_CHAT_ID = os.getenv('TELEGRAM_ADMIN_CHAT_ID')
 
-# --- Load name_priority.json ---
-try:
-    with open('name_priority.json', 'r') as f:
-        name_priority = json.load(f)
-    print(f"[DEBUG] Loaded name_priority.json with {len(name_priority)} entries.")
-except Exception as e:
-    print(f"[ERROR] Could not load name_priority.json: {e}")
-    name_priority = []
+# Paths
+DATA_DIR = Path('data')
+DATA_DIR.mkdir(exist_ok=True)
 
-name_priority_sorted = sorted(name_priority, key=lambda x: x.get("priority", 0))
-ACCOUNTS = [entry["username"] for entry in name_priority_sorted]
+# Load JSON files
+def load_json(name):
+    path = DATA_DIR / name
+    try:
+        with open(path, 'r') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"[ERROR] Failed to load {name}: {e}")
+        return {}
 
-# --- Load headline_name.json ---
-try:
-    with open('headline_name.json', 'r') as f:
-        HEADLINE_NAME = json.load(f)
-    print(f"[DEBUG] Loaded headline_name.json with {len(HEADLINE_NAME)} entries.")
-except Exception as e:
-    print(f"[ERROR] Could not load headline_name.json: {e}")
-    HEADLINE_NAME = {}
+name_priority = load_json('name_priority.json')
+HEADLINE_NAME = load_json('headline_name.json')
+SOURCE_HASHTAG = load_json('source_hashtag.json')
 
-# --- Load source_hashtag.json ---
-try:
-    with open('source_hashtag.json', 'r') as f:
-        SOURCE_HASHTAG = json.load(f)
-    print(f"[DEBUG] Loaded source_hashtag.json with {len(SOURCE_HASHTAG)} entries.")
-except Exception as e:
-    print(f"[ERROR] Could not load source_hashtag.json: {e}")
-    SOURCE_HASHTAG = {}
+# Account list
+ACCOUNTS = sorted(
+    [acc['username'] for acc in name_priority],
+    key=lambda x: next(a['priority'] for a in name_priority if a['username'] == x),
+    reverse=True
+)
 
-# --- Validate account mappings ---
+# State management
+STATE_FILE = DATA_DIR / 'state.json'
+
+# Validate mappings
 for username in ACCOUNTS:
     if username not in HEADLINE_NAME:
-        print(f"[WARNING] No headline name for '{username}' in headline_name.json.")
+        print(f"[WARNING] Missing display name for {username}")
     if username not in SOURCE_HASHTAG:
-        print(f"[WARNING] No source hashtag for '{username}' in source_hashtag.json.")
-
-# --- Other config ---
-STATE_FILE = 'state.json'
-
-# --- Optional: Print final account list ---
-print(f"[DEBUG] Final account priority list: {ACCOUNTS}")
+        print(f"[WARNING] Missing hashtag for {username}")
