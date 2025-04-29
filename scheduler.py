@@ -1,8 +1,7 @@
 import time
 import random
 import logging
-import requests
-import json
+from fake_useragent import UserAgent
 import snscrape.modules.twitter as sntwitter
 import telebot
 from config import *
@@ -16,14 +15,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
+ua = UserAgent()
 
 def get_scraper(username):
-    session = requests.Session()
-    session.headers.update({
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept-Language': 'en-US,en;q=0.9'
-    })
-    return sntwitter.TwitterUserScraper(username, session=session)
+    """Create scraper with randomized user agent"""
+    return sntwitter.TwitterUserScraper(username)
+
+def rotate_user_agent():
+    """Rotate user agent between requests"""
+    time.sleep(random.uniform(1, 3))
+    return ua.random
 
 def load_state():
     try:
@@ -61,9 +62,13 @@ def send_alert(message, media=None):
 
 def process_account(username, state):
     try:
-        scraper = get_scraper(username)
-        time.sleep(random.uniform(15, 45))
+        # Rotate user agent before each request
+        headers = {'User-Agent': rotate_user_agent()}
         
+        scraper = get_scraper(username)
+        tweets = []
+        
+        # Get most recent tweet only
         for tweet in scraper.get_items():
             if tweet.id <= state.get(username, 0):
                 break
@@ -75,13 +80,15 @@ def process_account(username, state):
                 state[username] = tweet.id
                 save_state(state)
                 break
+                
     except Exception as e:
         logger.error(f"Account {username} failed: {str(e)}")
-        if "429" in str(e):
-            time.sleep(300)
+        if "429" in str(e) or "Too Many Requests" in str(e):
+            time.sleep(300)  # Wait 5 minutes if rate limited
 
 def run():
     state = load_state()
     while True:
         for username in ACCOUNTS:
             process_account(username, state)
+            time.sleep(random.uniform(15, 45))  # Random delay between accounts
