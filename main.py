@@ -1,18 +1,24 @@
 import os
 from threading import Thread
-from waitress import serve
 from server import app
 from scheduler import run
+import playwright.sync_api
 
-def run_flask():
-    # Render-specific port handling
-    port = int(os.getenv("PORT", 8080))
-    serve(app, host="0.0.0.0", port=port)
+def install_browsers():
+    """Ensure Playwright browsers are installed"""
+    if not os.path.exists("/opt/render/.cache/ms-playwright"):
+        os.system("playwright install chromium")
+        os.system("playwright install-deps")
 
 if __name__ == "__main__":
+    # Install browsers first
+    install_browsers()
+    
     # Start Flask in background
-    flask_thread = Thread(target=run_flask, daemon=True)
-    flask_thread.start()
+    Thread(target=app.run, kwargs={
+        'host': "0.0.0.0",
+        'port': int(os.getenv("PORT", 8080))
+    }, daemon=True).start()
     
     # Start bot
     run()
