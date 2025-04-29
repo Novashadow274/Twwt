@@ -1,14 +1,24 @@
 import os
 import requests
 from pathlib import Path
-import time
 
-def download_media(url: str, headers: dict) -> str:
+def download_media(url: str) -> str:
     temp_dir = Path('temp_media')
     temp_dir.mkdir(exist_ok=True)
     try:
-        ext = os.path.splitext(url.split('?')[0])[1] or '.jpg'
+        # Clean URL and get extension
+        clean_url = url.split('?')[0]
+        ext = os.path.splitext(clean_url)[1] or '.jpg'
+        
+        # Generate filename
         path = temp_dir / f"{os.urandom(8).hex()}{ext}"
+        
+        # Download with realistic headers
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
+            'Referer': 'https://x.com/'
+        }
         
         with requests.get(url, headers=headers, stream=True, timeout=10) as r:
             r.raise_for_status()
@@ -20,27 +30,3 @@ def download_media(url: str, headers: dict) -> str:
         if 'path' in locals() and path.exists():
             path.unlink()
         raise e
-
-def extract_media_urls(tweet):
-    photos, videos = [], []
-    if hasattr(tweet, 'media'):
-        for m in tweet.media:
-            if m.type == 'photo':
-                photos.append(m.fullUrl)
-            elif m.type == 'video':
-                videos.append(max(
-                    (v for v in m.variants if v.contentType == 'video/mp4'),
-                    key=lambda v: v.bitrate or 0
-                ).url)
-    return photos, videos
-
-def cleanup_media():
-    """Remove media files older than 1 hour"""
-    temp_dir = Path('temp_media')
-    if temp_dir.exists():
-        for f in temp_dir.glob('*'):
-            try:
-                if f.stat().st_mtime < time.time() - 3600:
-                    f.unlink()
-            except:
-                pass
