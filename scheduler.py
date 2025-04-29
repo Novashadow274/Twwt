@@ -7,6 +7,7 @@ import telebot
 from config import *
 from formatter import format_message
 from helper import extract_media_urls, download_media
+import requests
 
 # Setup
 logging.basicConfig(
@@ -18,11 +19,11 @@ bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 ua = UserAgent()
 
 def get_scraper(username):
-    """Create scraper with randomized user agent"""
+    """Create basic scraper without session/headers"""
     return sntwitter.TwitterUserScraper(username)
 
 def rotate_user_agent():
-    """Rotate user agent between requests"""
+    """Return random user agent and add delay"""
     time.sleep(random.uniform(1, 3))
     return ua.random
 
@@ -41,10 +42,12 @@ def save_state(state):
 
 def send_alert(message, media=None):
     try:
+        headers = {'User-Agent': rotate_user_agent()}
+        
         if media and media['photos']:
             media_group = []
             for i, url in enumerate(media['photos']):
-                path = download_media(url)
+                path = download_media(url, headers)
                 if i == 0:
                     media_group.append(telebot.types.InputMediaPhoto(
                         open(path, 'rb'), caption=message))
@@ -53,7 +56,7 @@ def send_alert(message, media=None):
                         open(path, 'rb')))
             bot.send_media_group(TELEGRAM_CHAT_ID, media_group)
         elif media and media['videos']:
-            path = download_media(media['videos'][0])
+            path = download_media(media['videos'][0], headers)
             bot.send_video(TELEGRAM_CHAT_ID, open(path, 'rb'), caption=message)
         else:
             bot.send_message(TELEGRAM_CHAT_ID, message, parse_mode='Markdown')
@@ -62,11 +65,7 @@ def send_alert(message, media=None):
 
 def process_account(username, state):
     try:
-        # Rotate user agent before each request
-        headers = {'User-Agent': rotate_user_agent()}
-        
         scraper = get_scraper(username)
-        tweets = []
         
         # Get most recent tweet only
         for tweet in scraper.get_items():
