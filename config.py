@@ -37,10 +37,3 @@ ACCOUNTS = sorted(
 
 # State management
 STATE_FILE = DATA_DIR / 'state.json'
-
-# Validate mappings
-for username in ACCOUNTS:
-    if username not in HEADLINE_NAME:
-        print(f"[WARNING] Missing display name for {username}")
-    if username not in SOURCE_HASHTAG:
-        print(f"[WARNING] Missing hashtag for {username}")
