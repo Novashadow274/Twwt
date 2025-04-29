@@ -1,6 +1,6 @@
 python-dotenv
 pyTelegramBotAPI
-snscrape
+git+https://github.com/JustAnotherArchivist/snscrape.git@main#egg=snscrape
 schedule
 requests
 flask
