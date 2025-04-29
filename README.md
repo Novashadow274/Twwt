@@ -1,18 +1,13 @@
-# Twitter to Telegram Scraper Bot
+# 🚨 X (Twitter) to Telegram Scraper Bot ⚽
 
-This bot scrapes specific public Twitter accounts (without using the Twitter API) and sends new tweets to a Telegram channel. It supports:
+A lightweight bot that monitors **15+ football journalists** on X (Twitter) and delivers real-time updates to Telegram, **without using the Twitter API**. Optimized for 2025 and runs 24/7 on Render's free tier.
 
-- Text-only tweets  
-- Tweets with photos, GIFs, or videos  
-- Auto-formatting based on username and custom source hashtags  
-- Regular updates (every 7 minutes per account)
-- Telegram message for bot health every 4 minutes
-- 24/7 operation using Render (free) + UptimeRobot + Flask server
+## 🌟 Features
+- **Zero-API scraping** using `snscrape` (bypasses rate limits)
+- **Smart scheduling**: Checks accounts every 7 minutes (30s staggered)
+- **Media support**: Photos, videos, and GIFs with auto-cleanup
+- **Anti-block system**: Rotating user agents and randomized delays
+- **Self-healing**: Atomic state saving and automatic recovery
+- **Render-ready**: Health checks and minimal resource usage
 
----
-
-## Features
-
-- Uses `snscrape` for scraping tweets (no API keys or login needed)
-- Checks 15 journalist accounts in a staggered schedule
-- Formats tweets like:
+## ⚙️ File Structure
