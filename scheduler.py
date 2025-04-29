@@ -1,13 +1,12 @@
 import time
 import random
 import logging
-from fake_useragent import UserAgent
-import snscrape.modules.twitter as sntwitter
+import json
+from playwright.sync_api import sync_playwright  # NEW
 import telebot
 from config import *
 from formatter import format_message
-from helper import extract_media_urls, download_media
-import requests
+from helper import download_media
 
 # Setup
 logging.basicConfig(
@@ -16,16 +15,41 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
-ua = UserAgent()
 
-def get_scraper(username):
-    """Create basic scraper without session/headers"""
-    return sntwitter.TwitterUserScraper(username)
-
-def rotate_user_agent():
-    """Return random user agent and add delay"""
-    time.sleep(random.uniform(1, 3))
-    return ua.random
+def get_latest_tweet(username):
+    """Get latest tweet using browser automation"""
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+        
+        try:
+            page.goto(f"https://x.com/{username}", timeout=15000)
+            page.wait_for_selector('article[data-testid="tweet"]', timeout=10000)
+            
+            tweets = page.query_selector_all('article[data-testid="tweet"]')
+            if not tweets:
+                return None
+                
+            first_tweet = tweets[0]
+            content = first_tweet.query_selector('div[data-testid="tweetText"]').inner_text()
+            tweet_id = first_tweet.get_attribute('data-tweet-id')
+            
+            # Get media if exists
+            media = []
+            media_elements = first_tweet.query_selector_all('img[alt="Image"]')
+            for img in media_elements:
+                media.append(img.get_attribute('src'))
+            
+            return {
+                'id': tweet_id,
+                'content': content,
+                'media': media
+            }
+        except Exception as e:
+            logger.error(f"Browser scrape failed for {username}: {str(e)}")
+            return None
+        finally:
+            browser.close()
 
 def load_state():
     try:
@@ -35,19 +59,30 @@ def load_state():
         return {username: 0 for username in ACCOUNTS}
 
 def save_state(state):
-    temp = STATE_FILE.with_suffix('.tmp')
-    with open(temp, 'w') as f:
+    with open(STATE_FILE, 'w') as f:
         json.dump(state, f)
-    temp.replace(STATE_FILE)
 
-def send_alert(message, media=None):
+def process_account(username, state):
     try:
-        headers = {'User-Agent': rotate_user_agent()}
+        tweet_data = get_latest_tweet(username)
+        if not tweet_data or tweet_data['id'] == state.get(username):
+            return
+            
+        message = format_message(username, tweet_data['content'])
         
-        if media and media['photos']:
+        # Handle media
+        media_paths = []
+        if tweet_data['media']:
+            for url in tweet_data['media']:
+                try:
+                    media_paths.append(download_media(url))
+                except Exception as e:
+                    logger.error(f"Media download failed: {str(e)}")
+        
+        # Send message
+        if media_paths:
             media_group = []
-            for i, url in enumerate(media['photos']):
-                path = download_media(url, headers)
+            for i, path in enumerate(media_paths):
                 if i == 0:
                     media_group.append(telebot.types.InputMediaPhoto(
                         open(path, 'rb'), caption=message))
@@ -55,39 +90,19 @@ def send_alert(message, media=None):
                     media_group.append(telebot.types.InputMediaPhoto(
                         open(path, 'rb')))
             bot.send_media_group(TELEGRAM_CHAT_ID, media_group)
-        elif media and media['videos']:
-            path = download_media(media['videos'][0], headers)
-            bot.send_video(TELEGRAM_CHAT_ID, open(path, 'rb'), caption=message)
         else:
             bot.send_message(TELEGRAM_CHAT_ID, message, parse_mode='Markdown')
-    except Exception as e:
-        logger.error(f"Send failed: {e}")
-
-def process_account(username, state):
-    try:
-        scraper = get_scraper(username)
+            
+        state[username] = tweet_data['id']
+        save_state(state)
         
-        # Get most recent tweet only
-        for tweet in scraper.get_items():
-            if tweet.id <= state.get(username, 0):
-                break
-                
-            if not (tweet.inReplyToTweetId or getattr(tweet, 'retweetedTweet', None)):
-                message = format_message(username, getattr(tweet, 'rawContent', tweet.content))
-                photos, videos = extract_media_urls(tweet)
-                send_alert(message, {'photos': photos, 'videos': videos})
-                state[username] = tweet.id
-                save_state(state)
-                break
-                
     except Exception as e:
         logger.error(f"Account {username} failed: {str(e)}")
-        if "429" in str(e) or "Too Many Requests" in str(e):
-            time.sleep(300)  # Wait 5 minutes if rate limited
+        time.sleep(300)  # Wait 5 minutes if error occurs
 
 def run():
     state = load_state()
     while True:
         for username in ACCOUNTS:
             process_account(username, state)
-            time.sleep(random.uniform(15, 45))  # Random delay between accounts
+            time.sleep(random.randint(60, 120))  # 1-2 minutes between accounts
