@@ -5,8 +5,9 @@
 import os
 import certifi
 
-# Point Python's SSL system at certifi's CA bundle
+# Point both Python and requests at certifi's CA bundle
 os.environ['SSL_CERT_FILE'] = certifi.where()
+os.environ['REQUESTS_CA_BUNDLE'] = certifi.where()
 
 from threading import Thread
 from server import app
