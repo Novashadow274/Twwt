@@ -26,6 +26,31 @@ logger = logging.getLogger(__name__)
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN, threaded=False)
 REQUEST_TIMEOUT = 30
 
+def load_state():
+    """Load or initialize state file"""
+    try:
+        if STATE_FILE.exists():
+            with open(STATE_FILE, 'r') as f:
+                state = json.load(f)
+                logger.info("Loaded existing state file")
+                return state
+    except Exception as e:
+        logger.warning(f"Error loading state: {str(e)}")
+    
+    # Create new state if file doesn't exist or is invalid
+    state = {username: 0 for username in ACCOUNTS}
+    logger.info("Created new state file")
+    return state
+
+def save_state(state):
+    """Save state to file"""
+    try:
+        with open(STATE_FILE, 'w') as f:
+            json.dump(state, f)
+        logger.debug("State saved successfully")
+    except Exception as e:
+        logger.error(f"Failed to save state: {str(e)}")
+
 def get_latest_tweet(username):
     """Improved Twitter scraping with modern selectors"""
     try:
@@ -145,6 +170,7 @@ def process_account(username, state):
                 bot.send_message(TELEGRAM_CHAT_ID, message)
                 
             state[username] = tweet_data['id']
+            save_state(state)
             logger.info(f"✅ Successfully posted update from @{username}")
             
         except Exception as e:
