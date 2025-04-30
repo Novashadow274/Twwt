@@ -1,10 +1,3 @@
-from config import HEADLINE_NAME, SOURCE_HASHTAG
-
-def format_message(username: str, text: str) -> str:
-    display_name = HEADLINE_NAME.get(username, username)
-    hashtag = SOURCE_HASHTAG.get(username, "")
-    return (
-        f"**{display_name}🚨**\n"
-        f"{text.strip()}\n"
-        f"{'🔗Source ' + hashtag if hashtag else '🔗Source'}"
-    )
+def format_tweet(tweet_text, tweet_url):
+    # Format the tweet text with a link to the tweet
+    return f"{tweet_text}\n\nCheck the tweet: {tweet_url}"
