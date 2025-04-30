@@ -1,35 +1,41 @@
 import os
+import sys
 import logging
 from threading import Thread
 from waitress import serve
 from server import app
 from scheduler import run
 
-# Security note: Tokens are partially masked in logs
-def mask_token(token):
-    return token[:5] + '****' + token[-4:] if token else 'None'
-
-# Debug configuration
+# Configure logging before anything else
 logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s',
     level=logging.DEBUG
 )
 logger = logging.getLogger(__name__)
 
+# Security note: Tokens are partially masked in logs
+def mask_token(token):
+    return token[:5] + '****' + token[-4:] if token else 'None'
+
 def verify_config():
     """Validate all critical configurations"""
-    logger.info("Verifying configuration...")
+    logger.info("🔍 Verifying configuration...")
     
     # Verify Telegram credentials
-    bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
-    chat_id = os.getenv('TELEGRAM_CHAT_ID')
+    required_vars = {
+        'TELEGRAM_BOT_TOKEN': os.getenv('TELEGRAM_BOT_TOKEN'),
+        'TELEGRAM_CHAT_ID': os.getenv('TELEGRAM_CHAT_ID'),
+        'TELEGRAM_ADMIN_CHAT_ID': os.getenv('TELEGRAM_ADMIN_CHAT_ID')
+    }
     
-    if not all([bot_token, chat_id]):
-        logger.error("Missing Telegram credentials in environment variables")
+    missing_vars = [name for name, value in required_vars.items() if not value]
+    if missing_vars:
+        logger.error(f"❌ Missing environment variables: {missing_vars}")
         return False
     
-    logger.debug(f"Telegram Bot: {mask_token(bot_token)}")
-    logger.debug(f"Target Chat ID: {chat_id}")
+    logger.debug(f"Telegram Bot: {mask_token(required_vars['TELEGRAM_BOT_TOKEN'])}")
+    logger.debug(f"Target Chat ID: {required_vars['TELEGRAM_CHAT_ID']}")
+    logger.debug(f"Admin Chat ID: {required_vars['TELEGRAM_ADMIN_CHAT_ID']}")
     
     # Verify data files
     required_files = [
@@ -44,30 +50,38 @@ def verify_config():
             missing_files.append(file)
     
     if missing_files:
-        logger.error(f"Missing data files: {missing_files}")
+        logger.error(f"❌ Missing data files: {missing_files}")
         return False
     
     return True
 
 if __name__ == "__main__":
+    logger.info("⚡ Initializing Football News Bot")
+    
     if not verify_config():
-        logger.critical("Configuration validation failed!")
+        logger.critical("🛑 Configuration validation failed!")
         exit(1)
     
     # Start Flask server
-    flask_thread = Thread(
-        target=lambda: serve(app, host="0.0.0.0", port=int(os.getenv("PORT", 8080))),
-        daemon=True
-    )
-    flask_thread.start()
-    logger.info("Flask server started")
+    try:
+        flask_thread = Thread(
+            target=lambda: serve(app, host="0.0.0.0", port=int(os.getenv("PORT", 8080))),
+            daemon=True
+        )
+        flask_thread.start()
+        logger.info("🌐 Flask server started on port 8080")
+    except Exception as e:
+        logger.error(f"Failed to start Flask server: {str(e)}")
     
     # Start bot with error handling
     try:
-        logger.info("Starting main bot loop")
+        logger.info("🔄 Starting main bot loop")
         run()
+    except KeyboardInterrupt:
+        logger.info("🛑 Received keyboard interrupt, shutting down")
+        exit(0)
     except Exception as e:
-        logger.critical(f"Bot crashed: {str(e)}")
+        logger.critical(f"💥 Bot crashed: {str(e)}")
         
         # Attempt to notify admin via Telegram
         try:
