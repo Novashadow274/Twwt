@@ -1,7 +1,7 @@
 import time
 import random
 import json
-import logging  # THIS WAS THE MISSING IMPORT
+import logging
 import requests
 from bs4 import BeautifulSoup
 import telebot
@@ -11,144 +11,128 @@ from helper import download_media
 from pathlib import Path
 from pprint import pformat
 
-# Debug logging setup (now works because logging is imported)
+# Enhanced logging configuration
 logging.basicConfig(
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    level=logging.DEBUG
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO,
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('debug.log')
+    ]
 )
 logger = logging.getLogger(__name__)
-bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 
-def debug_log_tweet(username, tweet_data):
-    """Safe logging of tweet data"""
-    if not tweet_data:
-        logger.debug(f"No tweet data for @{username}")
-        return
-    
-    debug_info = {
-        'id': tweet_data.get('id'),
-        'content': tweet_data.get('content')[:50] + '...' if tweet_data.get('content') else None,
-        'media_count': len(tweet_data.get('media', [])),
-        'media_sample': tweet_data.get('media', [])[:1] if tweet_data.get('media') else None
-    }
-    logger.debug(f"Tweet data for @{username}:\n{pformat(debug_info)}")
+# Initialize bot with timeout
+bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN, threaded=False)
+REQUEST_TIMEOUT = 30
 
 def get_latest_tweet(username):
-    """Get latest tweet using HTML scraping with debug"""
+    """Improved Twitter scraping with modern selectors"""
     try:
-        logger.debug(f"Starting scrape for @{username}")
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept-Language': 'en-US,en;q=0.9'
-        }
+        logger.info(f"🔄 Scraping @{username}")
         
-        # Try both desktop and mobile endpoints
-        for endpoint in [f"https://x.com/{username}", f"https://mobile.x.com/{username}"]:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Referer': 'https://x.com/'
+        }
+
+        # Try multiple endpoints
+        endpoints = [
+            f"https://x.com/{username}",
+            f"https://x.com/{username}/with_replies",
+            f"https://mobile.x.com/{username}"
+        ]
+
+        for url in endpoints:
             try:
-                response = requests.get(endpoint, headers=headers, timeout=15)
+                response = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
                 response.raise_for_status()
+                
                 soup = BeautifulSoup(response.text, 'html.parser')
-                tweet = soup.find('article', {'data-testid': 'tweet'})
+                
+                # Modern tweet selector
+                tweet = soup.find('article', attrs={'role': 'article'}) or \
+                       soup.find('div', attrs={'data-testid': 'tweet'})
+                
                 if tweet:
-                    break
+                    # Extract content
+                    content = (tweet.find('div', {'data-testid': 'tweetText'}) or 
+                             tweet.find('div', {'class': 'tweet-text'})).get_text()
+                    
+                    # Get tweet ID
+                    tweet_id = (tweet.get('data-tweet-id') or 
+                              tweet.get('data-item-id') or
+                              str(int(time.time())))  # Fallback ID
+                    
+                    # Get media
+                    media = [
+                        img['src'] for img in tweet.find_all('img', {'alt': 'Image'}) 
+                        if img.get('src', '').startswith('http')
+                    ]
+                    
+                    return {
+                        'id': tweet_id,
+                        'content': content,
+                        'media': media
+                    }
+                    
             except Exception as e:
-                logger.warning(f"Attempt failed for {endpoint}: {str(e)}")
+                logger.warning(f"Attempt failed for {url}: {str(e)}")
                 continue
         
-        if not tweet:
-            logger.debug(f"No tweet found for @{username}")
-            return None
-            
-        # Extract data
-        content_div = tweet.find('div', {'data-testid': 'tweetText'})
-        content = content_div.get_text() if content_div else ""
-        tweet_id = tweet.get('data-tweet-id')
-        
-        if not tweet_id:
-            logger.debug("No tweet ID found")
-            return None
-        
-        # Get media
-        media = []
-        for img in tweet.find_all('img', alt='Image'):
-            src = img.get('src')
-            if src and src.startswith('http'):
-                media.append(src)
-        
-        result = {
-            'id': tweet_id,
-            'content': content,
-            'media': media
-        }
-        
-        debug_log_tweet(username, result)
-        return result
-        
-    except Exception as e:
-        logger.error(f"Scrape failed for @{username}: {str(e)}")
+        logger.error(f"All scraping attempts failed for @{username}")
         return None
 
-def load_state():
-    """Load state with debug"""
-    try:
-        with open(STATE_FILE, 'r') as f:
-            state = json.load(f)
-            logger.debug(f"Loaded state: {state}")
-            # Initialize any missing accounts
-            for username in ACCOUNTS:
-                if username not in state:
-                    state[username] = 0
-            return state
     except Exception as e:
-        logger.warning(f"State file error: {str(e)}. Creating new state.")
-        return {username: 0 for username in ACCOUNTS}
-
-def save_state(state):
-    """Save state with debug"""
-    try:
-        temp = STATE_FILE.with_suffix('.tmp')
-        with open(temp, 'w') as f:
-            json.dump(state, f)
-        temp.replace(STATE_FILE)
-        logger.debug("State saved successfully")
-    except Exception as e:
-        logger.error(f"Failed to save state: {str(e)}")
+        logger.error(f"Scrape error for @{username}: {str(e)}", exc_info=True)
+        return None
 
 def process_account(username, state):
-    """Enhanced processing with debug"""
+    """Processing with immediate visibility"""
     try:
-        logger.debug(f"Processing @{username}...")
-        tweet_data = get_latest_tweet(username)
+        logger.info(f"🔍 Checking @{username}")
         
+        tweet_data = get_latest_tweet(username)
         if not tweet_data:
-            logger.debug(f"No valid tweet data for @{username}")
             return
             
-        if str(tweet_data['id']) == str(state.get(username)):
+        current_id = str(state.get(username, 0))
+        if str(tweet_data['id']) == current_id:
             logger.debug(f"No new tweets for @{username}")
             return
             
-        logger.debug(f"New tweet found for @{username}")
+        logger.info(f"🎯 New tweet from @{username} (ID: {tweet_data['id']})")
+        
+        # Send test notification first
+        try:
+            bot.send_message(
+                TELEGRAM_CHAT_ID,
+                f"🔔 New update from @{username}",
+                disable_notification=True
+            )
+        except Exception as e:
+            logger.error(f"Telegram test failed: {str(e)}")
+            return
+            
+        # Process full tweet
         message = format_message(username, tweet_data['content'])
-        logger.debug(f"Formatted message: {message[:100]}...")
         
         # Handle media
         media_paths = []
         if tweet_data['media']:
-            logger.debug(f"Processing {len(tweet_data['media'])} media items")
-            for url in tweet_data['media']:
+            for url in tweet_data['media'][:4]:  # Limit to 4 media items
                 try:
                     path = download_media(url)
                     if path:
                         media_paths.append(path)
-                        logger.debug(f"Downloaded media: {url} -> {path}")
                 except Exception as e:
                     logger.error(f"Media download failed: {str(e)}")
+                    continue
         
-        # Send message
+        # Send to Telegram
         try:
             if media_paths:
-                logger.debug(f"Sending media group with {len(media_paths)} items")
                 media_group = []
                 for i, path in enumerate(media_paths):
                     with open(path, 'rb') as f:
@@ -158,41 +142,40 @@ def process_account(username, state):
                             media_group.append(telebot.types.InputMediaPhoto(f))
                 bot.send_media_group(TELEGRAM_CHAT_ID, media_group)
             else:
-                logger.debug("Sending text-only message")
-                bot.send_message(TELEGRAM_CHAT_ID, message, parse_mode='Markdown')
-            
+                bot.send_message(TELEGRAM_CHAT_ID, message)
+                
             state[username] = tweet_data['id']
-            save_state(state)
             logger.info(f"✅ Successfully posted update from @{username}")
             
         except Exception as e:
-            logger.error(f"Failed to send Telegram message: {str(e)}")
-            
+            logger.error(f"Failed to send update: {str(e)}")
+
     except Exception as e:
-        logger.error(f"Account processing failed for @{username}: {str(e)}")
-        time.sleep(30)  # Reduced from 300 to 30 seconds
+        logger.error(f"Processing error for @{username}: {str(e)}")
+        time.sleep(10)
 
 def run():
-    """Main loop with enhanced logging"""
-    logger.info("🚀 Starting main bot loop")
+    """Main loop with visible activity"""
+    logger.info("🚀 Starting monitoring loop")
     state = load_state()
     
-    # Send startup notification
+    # Initial test message
     try:
-        bot.send_message(TELEGRAM_CHAT_ID, "🤖 Bot started successfully! Monitoring accounts...")
+        bot.send_message(TELEGRAM_CHAT_ID, "⚽ Bot activated! Starting monitoring...")
     except Exception as e:
-        logger.error(f"Startup notification failed: {str(e)}")
+        logger.error(f"Initial message failed: {str(e)}")
     
     while True:
         try:
             for username in ACCOUNTS:
                 start_time = time.time()
                 process_account(username, state)
+                
+                # Dynamic delay between accounts
                 elapsed = time.time() - start_time
-                delay = max(10, random.randint(15, 45) - int(elapsed))  # Reduced delay range
-                logger.debug(f"Cycle completed in {elapsed:.2f}s. Sleeping for {delay}s")
+                delay = max(5, 15 - elapsed)  # 5-15 second delay
                 time.sleep(delay)
                 
         except Exception as e:
-            logger.critical(f"Main loop crashed: {str(e)}")
-            time.sleep(60)  # Reduced from 300 to 60 seconds
+            logger.error(f"Main loop error: {str(e)}")
+            time.sleep(30)
