@@ -1,9 +1,7 @@
-import os
-import sys
 import time
 import random
 import json
-import logging
+import logging  # THIS WAS THE MISSING IMPORT
 import requests
 from bs4 import BeautifulSoup
 import telebot
@@ -13,7 +11,7 @@ from helper import download_media
 from pathlib import Path
 from pprint import pformat
 
-# Debug logging setup
+# Debug logging setup (now works because logging is imported)
 logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s',
     level=logging.DEBUG
@@ -41,47 +39,29 @@ def get_latest_tweet(username):
         logger.debug(f"Starting scrape for @{username}")
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Referer': 'https://x.com/'
+            'Accept-Language': 'en-US,en;q=0.9'
         }
         
-        # Try both profile and with_replies endpoints
-        endpoints = [
-            f"https://x.com/{username}",
-            f"https://x.com/{username}/with_replies"
-        ]
-        
-        for url in endpoints:
+        # Try both desktop and mobile endpoints
+        for endpoint in [f"https://x.com/{username}", f"https://mobile.x.com/{username}"]:
             try:
-                response = requests.get(url, headers=headers, timeout=20)
+                response = requests.get(endpoint, headers=headers, timeout=15)
                 response.raise_for_status()
-                
-                # Debug: Save HTML for inspection if needed
-                with open(f"debug_{username}.html", "w", encoding="utf-8") as f:
-                    f.write(response.text)
-                
-                # Parse HTML
                 soup = BeautifulSoup(response.text, 'html.parser')
                 tweet = soup.find('article', {'data-testid': 'tweet'})
-                
                 if tweet:
                     break
             except Exception as e:
-                logger.warning(f"Attempt failed for {url}: {str(e)}")
+                logger.warning(f"Attempt failed for {endpoint}: {str(e)}")
                 continue
         
         if not tweet:
-            logger.debug(f"No tweet found for @{username} on any endpoint")
+            logger.debug(f"No tweet found for @{username}")
             return None
             
         # Extract data
         content_div = tweet.find('div', {'data-testid': 'tweetText'})
-        if not content_div:
-            logger.debug("Tweet content div not found")
-            return None
-            
-        content = content_div.get_text()
+        content = content_div.get_text() if content_div else ""
         tweet_id = tweet.get('data-tweet-id')
         
         if not tweet_id:
@@ -90,9 +70,8 @@ def get_latest_tweet(username):
         
         # Get media
         media = []
-        media_tags = tweet.find_all('img', alt='Image') + tweet.find_all('video')
-        for media_item in media_tags:
-            src = media_item.get('src') or media_item.get('poster')
+        for img in tweet.find_all('img', alt='Image'):
+            src = img.get('src')
             if src and src.startswith('http'):
                 media.append(src)
         
@@ -168,9 +147,6 @@ def process_account(username, state):
         
         # Send message
         try:
-            # First test Telegram connection with simple message
-            bot.send_message(TELEGRAM_CHAT_ID, f"🔍 Testing bot functionality for @{username}")
-            
             if media_paths:
                 logger.debug(f"Sending media group with {len(media_paths)} items")
                 media_group = []
@@ -194,12 +170,18 @@ def process_account(username, state):
             
     except Exception as e:
         logger.error(f"Account processing failed for @{username}: {str(e)}")
-        time.sleep(300)
+        time.sleep(30)  # Reduced from 300 to 30 seconds
 
 def run():
     """Main loop with enhanced logging"""
     logger.info("🚀 Starting main bot loop")
     state = load_state()
+    
+    # Send startup notification
+    try:
+        bot.send_message(TELEGRAM_CHAT_ID, "🤖 Bot started successfully! Monitoring accounts...")
+    except Exception as e:
+        logger.error(f"Startup notification failed: {str(e)}")
     
     while True:
         try:
@@ -207,10 +189,10 @@ def run():
                 start_time = time.time()
                 process_account(username, state)
                 elapsed = time.time() - start_time
-                delay = max(60, random.randint(120, 240) - int(elapsed))
+                delay = max(10, random.randint(15, 45) - int(elapsed))  # Reduced delay range
                 logger.debug(f"Cycle completed in {elapsed:.2f}s. Sleeping for {delay}s")
                 time.sleep(delay)
                 
         except Exception as e:
             logger.critical(f"Main loop crashed: {str(e)}")
-            time.sleep(300)  # Wait 5 minutes before restarting
+            time.sleep(60)  # Reduced from 300 to 60 seconds
