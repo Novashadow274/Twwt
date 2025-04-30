@@ -1,12 +1,8 @@
 import os
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
 load_dotenv()
 
-# Telegram bot settings
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID")
-
-# Nitter URL (using Nitter-based scraping)
-NITTER_URL = os.getenv("NITTER_URL")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHANNEL_ID = os.getenv("CHANNEL_ID")
+NITTER_INSTANCE = os.getenv("NITTER_INSTANCE", "https://nitter.net")
