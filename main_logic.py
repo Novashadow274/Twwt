@@ -17,8 +17,18 @@ def get_latest_tweet(username):
     if not tweet_div:
         raise Exception("Tweet not found")
 
-    text = tweet_div.find("div", {"class": "tweet-content"}).get_text(strip=True)
-    link = tweet_div.find("a", {"class": "tweet-link"})["href"]
+    content_div = tweet_div.find("div", {"class": "tweet-content"})
+    link_tag = tweet_div.find("a", {"class": "tweet-link"})
+
+    if not content_div or not link_tag:
+        raise Exception("Tweet structure missing required elements")
+
+    text = content_div.get_text(strip=True)
+    link = link_tag.get("href")
+
+    if not link:
+        raise Exception("Tweet link missing")
+
     full_url = f"https://x.com{link}"
 
     return text, full_url
