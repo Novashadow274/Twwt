@@ -10,10 +10,7 @@ bot = telebot.TeleBot(BOT_TOKEN)
 def get_latest_tweet(username):
     headers = {"User-Agent": UserAgent().random}
     nitter_instances = [
-        "https://nitter.kavin.rocks",
-        "https://nitter.poast.org",
-        "https://nitter.moomoo.me",
-        "https://nitter.pufe.org",
+        "https://nitter.tiekoetter.com",
     ]
 
     for instance in nitter_instances:
