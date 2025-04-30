@@ -5,4 +5,4 @@ flask==3.0.0
 waitress==3.0.1
 certifi==2025.4.26
 fake-useragent==1.2.1
-beautifulsoup4==4.12.3  # New dependency
+beautifulsoup4==4.12.3
