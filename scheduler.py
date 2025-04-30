@@ -1,6 +1,9 @@
+import os
+import sys
 import time
 import random
 import json
+import logging
 import requests
 from bs4 import BeautifulSoup
 import telebot
@@ -38,23 +41,38 @@ def get_latest_tweet(username):
         logger.debug(f"Starting scrape for @{username}")
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept-Language': 'en-US,en;q=0.9'
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Referer': 'https://x.com/'
         }
         
-        # Fetch profile page
-        response = requests.get(f"https://x.com/{username}", headers=headers, timeout=10)
-        response.raise_for_status()
+        # Try both profile and with_replies endpoints
+        endpoints = [
+            f"https://x.com/{username}",
+            f"https://x.com/{username}/with_replies"
+        ]
         
-        # Debug: Save HTML for inspection if needed
-        with open(f"debug_{username}.html", "w", encoding="utf-8") as f:
-            f.write(response.text)
-        
-        # Parse HTML
-        soup = BeautifulSoup(response.text, 'html.parser')
-        tweet = soup.find('article', {'data-testid': 'tweet'})
+        for url in endpoints:
+            try:
+                response = requests.get(url, headers=headers, timeout=20)
+                response.raise_for_status()
+                
+                # Debug: Save HTML for inspection if needed
+                with open(f"debug_{username}.html", "w", encoding="utf-8") as f:
+                    f.write(response.text)
+                
+                # Parse HTML
+                soup = BeautifulSoup(response.text, 'html.parser')
+                tweet = soup.find('article', {'data-testid': 'tweet'})
+                
+                if tweet:
+                    break
+            except Exception as e:
+                logger.warning(f"Attempt failed for {url}: {str(e)}")
+                continue
         
         if not tweet:
-            logger.debug(f"No tweet found for @{username}")
+            logger.debug(f"No tweet found for @{username} on any endpoint")
             return None
             
         # Extract data
@@ -72,8 +90,9 @@ def get_latest_tweet(username):
         
         # Get media
         media = []
-        for img in tweet.find_all('img', alt='Image'):
-            src = img.get('src')
+        media_tags = tweet.find_all('img', alt='Image') + tweet.find_all('video')
+        for media_item in media_tags:
+            src = media_item.get('src') or media_item.get('poster')
             if src and src.startswith('http'):
                 media.append(src)
         
@@ -96,6 +115,10 @@ def load_state():
         with open(STATE_FILE, 'r') as f:
             state = json.load(f)
             logger.debug(f"Loaded state: {state}")
+            # Initialize any missing accounts
+            for username in ACCOUNTS:
+                if username not in state:
+                    state[username] = 0
             return state
     except Exception as e:
         logger.warning(f"State file error: {str(e)}. Creating new state.")
@@ -145,6 +168,9 @@ def process_account(username, state):
         
         # Send message
         try:
+            # First test Telegram connection with simple message
+            bot.send_message(TELEGRAM_CHAT_ID, f"🔍 Testing bot functionality for @{username}")
+            
             if media_paths:
                 logger.debug(f"Sending media group with {len(media_paths)} items")
                 media_group = []
@@ -161,7 +187,7 @@ def process_account(username, state):
             
             state[username] = tweet_data['id']
             save_state(state)
-            logger.debug(f"Successfully processed @{username}")
+            logger.info(f"✅ Successfully posted update from @{username}")
             
         except Exception as e:
             logger.error(f"Failed to send Telegram message: {str(e)}")
@@ -172,7 +198,7 @@ def process_account(username, state):
 
 def run():
     """Main loop with enhanced logging"""
-    logger.info("Starting main bot loop")
+    logger.info("🚀 Starting main bot loop")
     state = load_state()
     
     while True:
