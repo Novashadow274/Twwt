@@ -1,13 +1,10 @@
 import time
-from main import post_latest_tweet
 
 def start_scraping():
-    username = "FabrizioRomano"
-    
-    while True:
-        print(f"Checking latest tweet from @{username}...")
-        post_latest_tweet(username)
-        time.sleep(10)  # Check every 10 seconds for a new tweet
-
-if __name__ == "__main__":
-    start_scraping()
+    usernames = ['FabrizioRomano']  # Add more usernames as needed
+    for username in usernames:
+        try:
+            post_latest_tweet(username)
+            time.sleep(10)  # Sleep for 10 seconds between requests
+        except Exception as e:
+            print(f"Failed to scrape {username}: {e}")
