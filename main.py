@@ -2,13 +2,14 @@ import os
 from threading import Thread
 from server import app
 from scheduler import run
-import playwright.sync_api
+import subprocess
 
 def install_browsers():
     """Ensure Playwright browsers are installed"""
     if not os.path.exists("/opt/render/.cache/ms-playwright"):
-        os.system("playwright install chromium")
-        os.system("playwright install-deps")
+        print("Installing Playwright browsers...")
+        subprocess.run(["playwright", "install", "chromium"], check=True)
+        subprocess.run(["playwright", "install-deps"], check=True)
 
 if __name__ == "__main__":
     # Install browsers first
