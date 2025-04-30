@@ -1,7 +1,7 @@
 import requests
 from bs4 import BeautifulSoup
 import telebot
-from config import BOT_TOKEN, CHANNEL_ID, NITTER_INSTANCE
+from config import BOT_TOKEN, CHANNEL_ID
 from formatter import format_tweet
 from fake_useragent import UserAgent
 
@@ -9,29 +9,41 @@ bot = telebot.TeleBot(BOT_TOKEN)
 
 def get_latest_tweet(username):
     headers = {"User-Agent": UserAgent().random}
-    url = f"{NITTER_INSTANCE}/{username}"
-    response = requests.get(url, headers=headers)
-    soup = BeautifulSoup(response.text, "html.parser")
+    nitter_instances = [
+        "https://nitter.kavin.rocks",
+        "https://nitter.poast.org",
+        "https://nitter.moomoo.me",
+        "https://nitter.pufe.org",
+    ]
 
-    tweet_div = soup.find("div", {"class": "timeline-item"})
-    if not tweet_div:
-        raise Exception("Tweet not found")
+    for instance in nitter_instances:
+        try:
+            url = f"{instance}/{username}"
+            response = requests.get(url, headers=headers, timeout=10)
+            soup = BeautifulSoup(response.text, "html.parser")
 
-    content_div = tweet_div.find("div", {"class": "tweet-content"})
-    link_tag = tweet_div.find("a", {"class": "tweet-link"})
+            tweet_div = soup.find("div", {"class": "timeline-item"})
+            if not tweet_div:
+                continue
 
-    if not content_div or not link_tag:
-        raise Exception("Tweet structure missing required elements")
+            content_div = tweet_div.find("div", {"class": "tweet-content"})
+            link_tag = tweet_div.find("a", {"class": "tweet-link"})
 
-    text = content_div.get_text(strip=True)
-    link = link_tag.get("href")
+            if not content_div or not link_tag:
+                continue
 
-    if not link:
-        raise Exception("Tweet link missing")
+            text = content_div.get_text(strip=True)
+            link = link_tag.get("href")
 
-    full_url = f"https://x.com{link}"
+            if not link:
+                continue
 
-    return text, full_url
+            full_url = f"https://x.com{link}"
+            return text, full_url
+        except Exception:
+            continue
+
+    raise Exception("Tweet not found on any Nitter instance")
 
 def post_latest_tweet(username, last_url=None):
     tweet_text, tweet_url = get_latest_tweet(username)
