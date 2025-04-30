@@ -2,22 +2,25 @@ import os
 from threading import Thread
 from server import app
 from scheduler import run
-import subprocess
+from playwright.sync_api import sync_playwright
 
-def install_browsers():
-    """Ensure Playwright browsers are installed"""
-    if not os.path.exists("/opt/render/.cache/ms-playwright"):
-        print("Installing Playwright browsers...")
-        subprocess.run(["playwright", "install", "chromium"], check=True)
-        subprocess.run(["playwright", "install-deps"], check=True)
+def configure_playwright():
+    """Configure Playwright without system dependencies"""
+    with sync_playwright() as p:
+        # Use Render's existing Chrome if available
+        browser = p.chromium.launch(
+            headless=True,
+            executable_path="/usr/bin/google-chrome"  # Render's Chrome path
+        )
+        browser.close()
 
 if __name__ == "__main__":
-    # Install browsers first
-    install_browsers()
+    # Configure Playwright first
+    configure_playwright()
     
     # Start Flask in background
     Thread(target=app.run, kwargs={
-        'host': "0.0.0.0",
+        'host': "0.0.0.0", 
         'port': int(os.getenv("PORT", 8080))
     }, daemon=True).start()
     
