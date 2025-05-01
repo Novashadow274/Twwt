@@ -1,0 +1,25 @@
+{
+  "admin_commands": {
+    "/ban": "Ban a user (by reply, @username or user ID).",
+    "/unban": "Unban a user by user ID.",
+    "/mute": "Mute a user (no duration).",
+    "/tpmute": "Mute a user temporarily. Usage: /tpmute <duration>. e.g. /tpmute 10m",
+    "/unmute": "Unmute a user.",
+    "/warn": "Issue a warning to a user.",
+    "/unwarn": "Remove a warning from a user.",
+    "/info": "Show user info (warnings, messages count, join time).",
+    "/clean": "Clean last N messages. Usage: /clean 50 (deletes last 50 msgs).",
+    "/kick": "Kick a user (ban & immediate unban).",
+    "/promote": "Promote a member to admin.",
+    "/demote": "Demote an admin to member.",
+    "/banwd": "Ban a word/phrase. Usage: /banwd inappropriate",
+    "/unwd": "Remove a word from ban list. Usage: /unwd inappropriate",
+    "/banstk": "Ban a sticker (by replying to the sticker message).",
+    "/unbanstk": "Unban the replied sticker."
+  },
+  "user_commands": {
+    "/me": "Show your join date, message count, and warnings.",
+    "/report": "Report a user. Usage: /report @user [reason]",
+    "@admin": "Alert the admin (bot will respond)."
+  }
+}
