@@ -39,11 +39,7 @@ app.add_handler(CommandHandler("unbanstk", unbanstk))
 # Handle all normal text messages for spam/bad-content filtering
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, logic.handle_message))
 
-# Start webhook (Render provides PORT and RENDER_APP_URL in env)
-PORT = int(os.environ.get("PORT", "8443"))
-RENDER_URL = os.environ.get("RENDER_APP_URL")  # e.g. "https://myapp.onrender.com"
-# The webhook path is usually the bot token for security
-app.run_webhook(listen="0.0.0.0",
-                port=PORT,
-                url_path=config.BOT_TOKEN,
-                webhook_url=f"{RENDER_URL}/{config.BOT_TOKEN}") 
+# Start the bot using long polling
+if __name__ == "__main__":
+    print("Starting bot with long polling…")
+    app.run_polling()
