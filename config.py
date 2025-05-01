@@ -1,13 +1,13 @@
+# config.py
 import os
 from dotenv import load_dotenv
 
-load_dotenv()  # load .env file
+load_dotenv()  # load variables from .env
 
-BOT_TOKEN       = os.getenv("BOT_TOKEN")           # Telegram bot token
-GROUP_ID        = int(os.getenv("GROUP_ID", 0))    # Target group chat ID
-OWNER_ID        = int(os.getenv("GROUP_OWNER_ID", 0)) # Group owner's user ID
-LOG_CHANNEL_ID  = int(os.getenv("LOG_CHANNEL_ID", 0)) # Log channel ID (private group)
-WEBHOOK_URL     = os.getenv("WEBHOOK_URL")         # Public URL for webhooks (e.g. https://myapp.onrender.com)
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+OWNER_ID = int(os.getenv("OWNER_ID", "0"))          # Telegram ID of bot owner
+LOG_CHANNEL = int(os.getenv("LOG_CHANNEL", "0"))    # Private channel ID for logging
+GROUP_ID = int(os.getenv("GROUP_ID", "0"))          # (Optional) group ID to restrict in
 
-if not BOT_TOKEN or not GROUP_ID or not OWNER_ID or not LOG_CHANNEL_ID or not WEBHOOK_URL:
-    raise ValueError("Configuration incomplete. Please set BOT_TOKEN, GROUP_ID, GROUP_OWNER_ID, LOG_CHANNEL_ID, WEBHOOK_URL in .env")
+# Permissions: if needed
+ADMIN_IDS = set(int(x) for x in os.getenv("ADMIN_IDS", "").split()) 
