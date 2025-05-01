@@ -1,5 +1,7 @@
 # main.py
 import os
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
 import config
 import logic
@@ -13,6 +15,19 @@ from commands.clean import clean
 from commands.report import report
 from commands.ban_words import banwd, unwd
 from commands.ban_stickers import banstk, unbanstk
+
+# Dummy HTTP server to keep port open for Render
+class DummyHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is alive.")
+
+def run_dummy_server():
+    server = HTTPServer(("0.0.0.0", 8080), DummyHandler)
+    server.serve_forever()
+
+threading.Thread(target=run_dummy_server, daemon=True).start()
 
 # Build the application
 app = ApplicationBuilder().token(config.BOT_TOKEN).build()
@@ -39,7 +54,11 @@ app.add_handler(CommandHandler("unbanstk", unbanstk))
 # Handle all normal text messages for spam/bad-content filtering
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, logic.handle_message))
 
-# Start the bot using long polling
-if __name__ == "__main__":
-    print("Starting bot with long polling…")
-    app.run_polling()
+# Start webhook (Render provides PORT and RENDER_APP_URL in env)
+PORT = int(os.environ.get("PORT", "8443"))
+RENDER_URL = os.environ.get("RENDER_APP_URL")  # e.g. "https://myapp.onrender.com"
+# The webhook path is usually the bot token for security
+app.run_webhook(listen="0.0.0.0",
+                port=PORT,
+                url_path=config.BOT_TOKEN,
+                webhook_url=f"{RENDER_URL}/{config.BOT_TOKEN}")
