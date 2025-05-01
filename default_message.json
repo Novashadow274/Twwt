@@ -1,21 +1,8 @@
 {
-  "ban":    "🚫 User has been banned.",
-  "unban":  "✅ User has been unbanned.",
-  "mute":   "🤐 User has been muted.",
-  "tpmute": "🤐 User has been temporarily muted.",
-  "unmute": "🔊 User has been unmuted.",
-  "warn":   "⚠ Warning issued to user.",
-  "unwarn": "🔄 Warning removed from user.",
-  "info":   "ℹ User info:",
-  "clean":  "🧹 Chat cleaned up.",
-  "kick":   "👢 User has been kicked.",
-  "promote":"📈 User promoted to admin.",
-  "demote": "📉 User demoted from admin.",
-  "banwd":  "🚫 Word has been banned.",
-  "unwd":   "✅ Word ban lifted.",
-  "banstk": "🚫 Sticker has been banned.",
-  "unbanstk":"✅ Sticker ban lifted.",
-  "me":     "👤 You are",
-  "report": "🚨 Your report has been noted.",
-  "admin":  "👑 Admin has been alerted."
+  "ban_reason": "You have been banned by {admin}.",
+  "mute_reason": "You have been muted by {admin}.",
+  "warn_reason": "You have been warned: {reason}",
+  "report_notice": "Your report has been sent to the admins.",
+  "clean_notice": "Chat cleaned by admin.",
+  "error_usage": "Incorrect usage of command."
 }
