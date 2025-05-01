@@ -1,5 +1,4 @@
 import os
-import asyncio
 import datetime
 import json
 
@@ -13,6 +12,7 @@ from telegram.ext import (
 
 from logic import *
 import config
+
 
 async def reset_daily(context: ContextTypes.DEFAULT_TYPE):
     """Reset message & warning counts at UTC midnight."""
@@ -28,27 +28,24 @@ async def reset_daily(context: ContextTypes.DEFAULT_TYPE):
         disable_notification=True,
     )
 
-async def main():
+
+def main():
     # Load config files
     with open("default_message.json", "r") as f:
         default_msgs = json.load(f)
     with open("command.json", "r") as f:
         commands = json.load(f)
 
-    # Build the bot
-    app = (
-        ApplicationBuilder()
-        .token(config.BOT_TOKEN)
-        .build()
-    )
+    # Build the bot application
+    app = ApplicationBuilder().token(config.BOT_TOKEN).build()
 
-    # Shared state
+    # Shared in-memory state
     app.bot_data["default_messages"] = default_msgs
-    app.bot_data["config"] = config
-    app.bot_data["banned_words"] = set()
-    app.bot_data["banned_stickers"] = set()
-    app.bot_data["users"] = {}
-    app.bot_data["reports"] = {}
+    app.bot_data["config"]           = config
+    app.bot_data["banned_words"]     = set()
+    app.bot_data["banned_stickers"]  = set()
+    app.bot_data["users"]            = {}
+    app.bot_data["reports"]          = {}
 
     # Admin commands
     app.add_handler(CommandHandler("ban", ban))
@@ -76,24 +73,23 @@ async def main():
     # Catch-all for moderation (links, forwards, spam, banned words/stickers)
     app.add_handler(MessageHandler(filters.ALL, handle_messages), 1)
 
-    # *** JOB QUEUE SETUP ***
-    # Make sure you have installed 'python-telegram-bot[job-queue]'
-    # This schedules reset_daily at 00:00 UTC every day
+    # JOB‐QUEUE: schedule daily reset at UTC midnight
     app.job_queue.run_daily(
         reset_daily,
         time=datetime.time(hour=0, minute=0, second=0),
     )
 
-    # Start webhook server
+    # Run webhook (synchronous entrypoint)
     PORT = int(os.environ.get("PORT", 8443))
-    webhook_path = config.BOT_TOKEN
-    await app.start_webhook(
+    webhook_path = config.BOT_TOKEN  # Telegram will POST updates here
+
+    app.run_webhook(
         listen="0.0.0.0",
         port=PORT,
         url_path=webhook_path,
         webhook_url=f"{config.WEBHOOK_URL}/{webhook_path}",
     )
-    await app.wait_until_closed()
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
