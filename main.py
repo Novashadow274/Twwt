@@ -1,27 +1,56 @@
+import os
 import asyncio
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
+import datetime
 import json
+
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
+    filters,
+)
+
 from logic import *
 import config
 
+async def reset_daily(context: ContextTypes.DEFAULT_TYPE):
+    """Reset message & warning counts at UTC midnight."""
+    users = context.bot_data.get("users", {})
+    for data in users.values():
+        data["messages"] = 0
+        data["warnings"] = 0
+
+    # Optional: log to your private channel
+    await context.bot.send_message(
+        chat_id=config.LOG_CHANNEL_ID,
+        text="🔄 Daily reset of message counts & warnings complete.",
+        disable_notification=True,
+    )
+
 async def main():
-    # Load default messages and command info
+    # Load config files
     with open("default_message.json", "r") as f:
         default_msgs = json.load(f)
     with open("command.json", "r") as f:
         commands = json.load(f)
 
-    # Initialize bot application (using webhook mode for Render deployment)
-    app = ApplicationBuilder().token(config.BOT_TOKEN).build()
-    # Store shared data in bot_data
+    # Build the bot
+    app = (
+        ApplicationBuilder()
+        .token(config.BOT_TOKEN)
+        .build()
+    )
+
+    # Shared state
     app.bot_data["default_messages"] = default_msgs
-    app.bot_data["config"] = config  # store config for easy access
+    app.bot_data["config"] = config
     app.bot_data["banned_words"] = set()
     app.bot_data["banned_stickers"] = set()
-    app.bot_data["users"] = {}      # user metadata storage
+    app.bot_data["users"] = {}
     app.bot_data["reports"] = {}
 
-    # Register admin command handlers
+    # Admin commands
     app.add_handler(CommandHandler("ban", ban))
     app.add_handler(CommandHandler("unban", unban))
     app.add_handler(CommandHandler("mute", mute))
@@ -39,30 +68,31 @@ async def main():
     app.add_handler(CommandHandler("banstk", banstk))
     app.add_handler(CommandHandler("unbanstk", unbanstk))
 
-    # Register user command handlers
+    # User commands
     app.add_handler(CommandHandler("me", me))
     app.add_handler(CommandHandler("report", report))
-    # Catch any message containing '@admin'
-    app.add_handler(MessageHandler(filters.Regex(r'@admin'), mention_admin))
+    app.add_handler(MessageHandler(filters.Regex(r"@admin"), mention_admin))
 
-    # General message handler (spam, links, forwards, banned content)
+    # Catch-all for moderation (links, forwards, spam, banned words/stickers)
     app.add_handler(MessageHandler(filters.ALL, handle_messages), 1)
 
-    # Periodic jobs:
-    # Reset daily message counts and warnings every midnight
-    async def reset_daily(context: ContextTypes.DEFAULT_TYPE):
-        for uid, data in context.bot_data.get("users", {}).items():
-            data["messages"] = 0
-            data["warnings"] = 0
-    # Schedule at 00:00 UTC every day
-    app.job_queue.run_daily(reset_daily, time=datetime.time(hour=0, minute=0, second=0))
+    # *** JOB QUEUE SETUP ***
+    # Make sure you have installed 'python-telegram-bot[job-queue]'
+    # This schedules reset_daily at 00:00 UTC every day
+    app.job_queue.run_daily(
+        reset_daily,
+        time=datetime.time(hour=0, minute=0, second=0),
+    )
 
-    # Start webhook (listen on all interfaces, port from env)
+    # Start webhook server
     PORT = int(os.environ.get("PORT", 8443))
-    # The webhook URL is e.g. WEBHOOK_URL + "/" + BOT_TOKEN
     webhook_path = config.BOT_TOKEN
-    await app.start_webhook(listen="0.0.0.0", port=PORT, url_path=webhook_path,
-                            webhook_url=f"{config.WEBHOOK_URL}/{webhook_path}")
+    await app.start_webhook(
+        listen="0.0.0.0",
+        port=PORT,
+        url_path=webhook_path,
+        webhook_url=f"{config.WEBHOOK_URL}/{webhook_path}",
+    )
     await app.wait_until_closed()
 
 if __name__ == "__main__":
