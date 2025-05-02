@@ -44,8 +44,3 @@ def build_app():
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, logic.handle_message))
     return app
-
-if __name__ == "__main__":
-    logger.info("Starting bot with long-polling (local dev)")
-    app = build_app()
-    app.run_polling()
