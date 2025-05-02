@@ -13,7 +13,8 @@ def health():
     return "OK", 200
 
 def run_flask():
-    flask_app.run(host="0.0.0.0", port=int(os.environ["PORT"]))  # Use PORT environment variable
+    # Use environment variable for dynamic port allocation
+    flask_app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -22,14 +23,14 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 if __name__ == "__main__":
-    # Start Flask in a separate thread
+    # Start Flask in a separate thread to avoid blocking the webhook
     Thread(target=run_flask).start()
 
     app = build_app()
     logger.info("Starting bot with webhook (Render)")
     app.run_webhook(
         listen="0.0.0.0",
-        port=int(os.environ["PORT"]),  # Use the same port as Flask
+        port=int(os.environ.get("PORT", 10000)),  # Use dynamic port
         url_path=config.BOT_TOKEN,
         webhook_url=f"{os.environ['RENDER_APP_URL']}/{config.BOT_TOKEN}"
     )
