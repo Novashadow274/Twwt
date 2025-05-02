@@ -1,58 +1,50 @@
-## commands/warn.py
+# commands/warn.py
 import json
 from pathlib import Path
 from telegram import Update
 from telegram.ext import ContextTypes
 from config import OWNER_ID, LOG_CHANNEL
 
-# Path to our persistent warning store
+# Persistent store
 WARN_FILE = Path("warn_data.json")
+warn_counts = {}
 
-def load_warns() -> dict:
+def load_warns() -> None:
+    global warn_counts
     if WARN_FILE.exists():
         try:
-            return json.loads(WARN_FILE.read_text())
+            warn_counts = json.loads(WARN_FILE.read_text())
         except json.JSONDecodeError:
-            return {}
-    return {}
+            warn_counts = {}
 
-def save_warns(data: dict):
-    WARN_FILE.write_text(json.dumps(data))
+def save_warns() -> None:
+    WARN_FILE.write_text(json.dumps(warn_counts))
 
-# Load existing warn counts at startup
-warn_counts = load_warns()
+load_warns()
 
 async def warn(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if user.id != OWNER_ID:
         return
 
-    # Identify target
     target = update.message.reply_to_message.from_user if update.message.reply_to_message else None
     if not target:
         await update.message.reply_text("Reply to a user to warn them.")
         return
 
-    # Increment warn count
-    target_id = str(target.id)
-    count = warn_counts.get(target_id, 0) + 1
-    warn_counts[target_id] = count
-    save_warns(warn_counts)
+    tid = str(target.id)
+    count = warn_counts.get(tid, 0) + 1
+    warn_counts[tid] = count
+    save_warns()
 
-    # Reason text
     reason = " ".join(context.args) if context.args else "No reason"
-
-    # Log to your channel
     log_text = (
         f"⚠️ <b>Warning</b>: {target.mention_html()} (id: {target.id}) "
         f"now at {count} warn(s). Reason: {reason}"
     )
     await context.bot.send_message(LOG_CHANNEL, log_text, parse_mode="HTML")
-
-    # Delete the warning command message for cleanliness
     await update.message.delete()
 
-    # Auto‐ban at 3 warnings
     if count >= 3:
         await context.bot.ban_chat_member(update.effective_chat.id, target.id)
         await context.bot.send_message(
@@ -71,10 +63,10 @@ async def unwarn(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Reply to a user to remove a warning.")
         return
 
-    target_id = str(target.id)
-    count = max(warn_counts.get(target_id, 0) - 1, 0)
-    warn_counts[target_id] = count
-    save_warns(warn_counts)
+    tid = str(target.id)
+    count = max(warn_counts.get(tid, 0) - 1, 0)
+    warn_counts[tid] = count
+    save_warns()
 
     log_text = (
         f"✅ <b>Unwarned</b>: {target.mention_html()} (id: {target.id}) now at {count} warn(s)."
