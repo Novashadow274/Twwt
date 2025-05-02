@@ -10,11 +10,12 @@ from commands.mute import mute, tpmute, unmute
 from commands.warn import warn, unwarn
 from commands.info_me import info, me
 from commands.admin import promote, demote
-from commands.clean import clean, track_messages  # <-- UPDATED
+from commands.clean import clean, track_messages
 from commands.report import report
 from commands.ban_words import banwd, unwd
 from commands.ban_stickers import banstk, unbanstk
 
+# Configure logging
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO
@@ -46,7 +47,7 @@ def build_app():
     # Message tracking for /clean
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, track_messages))
 
-    # Your own logic (should probably come after message tracking)
+    # Main message handler
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, logic.handle_message))
 
     return app
