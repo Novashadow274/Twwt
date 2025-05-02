@@ -8,6 +8,10 @@ from config import OWNER_ID
 recent_messages = {}
 
 async def track_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Ensure this update contains a message
+    if not update.message:
+        return
+
     chat_id = update.effective_chat.id
     msg_id = update.message.message_id
 
@@ -39,7 +43,7 @@ async def clean(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await context.bot.delete_message(chat_id, msg_id)
         except Exception:
-            pass  # Handle messages that can't be deleted (e.g., too old)
+            pass  # Message might be too old or already deleted
 
     # Optionally delete the /clean command itself
     try:
