@@ -13,7 +13,7 @@ def health():
     return "OK", 200
 
 def run_flask():
-    flask_app.run(host="0.0.0.0", port=int(os.environ["PORT"]))
+    flask_app.run(host="0.0.0.0", port=int(os.environ["PORT"]))  # Use PORT environment variable
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -29,7 +29,7 @@ if __name__ == "__main__":
     logger.info("Starting bot with webhook (Render)")
     app.run_webhook(
         listen="0.0.0.0",
-        port=8443,  # Telegram recommends 443/80/88/8443
+        port=int(os.environ["PORT"]),  # Use the same port as Flask
         url_path=config.BOT_TOKEN,
         webhook_url=f"{os.environ['RENDER_APP_URL']}/{config.BOT_TOKEN}"
     )
