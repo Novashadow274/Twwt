@@ -34,7 +34,7 @@ def handle_message(update, context):
 
     text = msg.text or ""
     # Check forwarded message
-    if msg.forward_date or msg.forward_from:
+    if getattr(msg, "forward_date", None) or getattr(msg, "forward_from", None):
         delete_and_log(context, chat_id, msg.message_id, "Forwarded message", user)
         return
 
