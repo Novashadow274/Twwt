@@ -2,8 +2,7 @@
 
 import os
 import logging
-from main import build_app  # Import the app builder only
-
+from main import build_app
 import config
 
 logging.basicConfig(
