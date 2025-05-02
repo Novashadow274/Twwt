@@ -1,6 +1,8 @@
 # main.py
 
 import logging
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
 import config
 import logic
@@ -51,3 +53,23 @@ def build_app():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, logic.handle_message))
 
     return app
+
+# Health check server to keep Render service alive
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_HEAD(self):
+        self.send_response(200)
+        self.end_headers()
+
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is running.")
+
+def run_health_server():
+    server = HTTPServer(("0.0.0.0", 10000), HealthCheckHandler)
+    server.serve_forever()
+
+if __name__ == "__main__":
+    threading.Thread(target=run_health_server, daemon=True).start()
+    app = build_app()
+    app.run_polling()
