@@ -6,16 +6,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Initialize the Flask app
+app = build_app()
+
+# Minimal Flask app for Render to detect an open port
 flask_app = Flask(__name__)
 
-# Health check route for Render to detect an open port
 @flask_app.route("/")
 def health():
     return "OK", 200
-
-# Build the Telegram bot app
-app = build_app()
 
 if __name__ == "__main__":
     logging.basicConfig(
@@ -25,8 +23,6 @@ if __name__ == "__main__":
     logger = logging.getLogger(__name__)
     logger.info("Starting bot with webhook (Render)")
 
-    # Start the Flask app to serve the webhook
-    flask_app.run(
-        host="0.0.0.0",
-        port=int(os.environ.get("PORT", 8443)),  # PORT is defined by Render
-    )
+    # Do not call `app.run()` here. Gunicorn will handle the app.
+    # The application will be run by Gunicorn instead of Flask’s built-in server.
+    pass
