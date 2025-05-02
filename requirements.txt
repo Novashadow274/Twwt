@@ -1,4 +1,2 @@
 python-telegram-bot[webhooks]==22.0
 python-dotenv
-Flask
-gunicorn
