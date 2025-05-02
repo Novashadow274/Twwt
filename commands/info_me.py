@@ -12,4 +12,9 @@ async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def me(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     count = warn_counts.get(user.id, 0)
-    await update.message.reply_text(f"You have {count} warning(s).")
+    
+    # Send the response in a DM (private message)
+    await user.send_message(f"You have {count} warning(s).")
+    
+    # Optionally, delete the command message from the group
+    await update.message.delete()
