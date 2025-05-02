@@ -8,19 +8,15 @@ from config import OWNER_ID
 recent_messages = {}
 
 async def track_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Ensure this update contains a message
+    # Guard against non-message updates
     if not update.message:
         return
 
     chat_id = update.effective_chat.id
     msg_id = update.message.message_id
 
-    if chat_id not in recent_messages:
-        recent_messages[chat_id] = []
-
-    recent_messages[chat_id].append(msg_id)
-
-    # Limit stored messages per chat to the last 100
+    recent_messages.setdefault(chat_id, []).append(msg_id)
+    # Keep only the last 100 IDs
     if len(recent_messages[chat_id]) > 100:
         recent_messages[chat_id] = recent_messages[chat_id][-100:]
 
@@ -38,14 +34,13 @@ async def clean(update: Update, context: ContextTypes.DEFAULT_TYPE):
     n = int(context.args[0])
     message_ids = recent_messages.get(chat_id, [])[-n:]
 
-    # Delete collected messages
     for msg_id in message_ids:
         try:
             await context.bot.delete_message(chat_id, msg_id)
         except Exception:
-            pass  # Message might be too old or already deleted
+            pass  # ignore deletion failures
 
-    # Optionally delete the /clean command itself
+    # delete the /clean command message itself
     try:
         await update.message.delete()
     except Exception:
