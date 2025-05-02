@@ -1,12 +1,6 @@
-# server.py
-from http.server import BaseHTTPRequestHandler, HTTPServer
-
-class DummyHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"Bot is running!")
-
-def start_dummy_server():
-    server = HTTPServer(("0.0.0.0", 8080), DummyHandler)
-    server.serve_forever()
+application.run_webhook(
+    listen="0.0.0.0",
+    port=int(os.environ["PORT"]),
+    url_path=config.BOT_TOKEN,
+    webhook_url=f"{os.environ['RENDER_APP_URL']}/{config.BOT_TOKEN}"
+)
