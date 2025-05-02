@@ -1,9 +1,9 @@
 # main.py
-
 import logging
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
+from telegram.error import Conflict as ConflictError
 import config
 import logic
 
@@ -24,10 +24,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+async def error_handler(update, context):
+    err = context.error
+    if isinstance(err, ConflictError):
+        return  # ignore getUpdates 409 conflicts
+    logger.error("Exception while handling update", exc_info=err)
+
 def build_app():
     app = ApplicationBuilder().token(config.BOT_TOKEN).build()
 
-    # Command handlers
+    # Register commands
     app.add_handler(CommandHandler("ban", ban))
     app.add_handler(CommandHandler("unban", unban))
     app.add_handler(CommandHandler("mute", mute))
@@ -46,20 +52,20 @@ def build_app():
     app.add_handler(CommandHandler("banstk", banstk))
     app.add_handler(CommandHandler("unbanstk", unbanstk))
 
-    # Message tracking for /clean
+    # Message handlers
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, track_messages))
-
-    # Main message handler
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, logic.handle_message))
+
+    # Global error handler
+    app.add_error_handler(error_handler)
 
     return app
 
-# Health check server to keep Render service alive
+# Health check server for Render
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_HEAD(self):
         self.send_response(200)
         self.end_headers()
-
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
