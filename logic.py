@@ -6,6 +6,10 @@ from telegram import ChatPermissions
 from config import OWNER_ID, LOG_CHANNEL, GROUP_ID, ADMIN_IDS
 from commands.warn import warn_user_auto
 
+# Initialize banned words and stickers lists
+banned_words = []
+banned_stickers = []
+
 # Spam detection variables
 user_last_message = {}
 spam_threshold = 5  # messages
@@ -44,9 +48,23 @@ async def handle_message(update, context):
     else:
         user_last_message[user.id] = (current_time, 1)
 
+    # Check banned words if text message
+    if msg.text:
+        text = msg.text.lower()
+        for word in banned_words:
+            if word.lower() in text:
+                await warn_user_auto(context, user, chat_id)
+                await delete_and_log(context, chat_id, msg.message_id, f"Banned word: {word}", user)
+                return
+
     # Handle different message types
     if msg.forward_date or msg.forward_from:
         await delete_and_log(context, chat_id, msg.message_id, "Forwarded message", user)
+        return
+
+    if msg.sticker and msg.sticker.set_name in banned_stickers:
+        await warn_user_auto(context, user, chat_id)
+        await delete_and_log(context, chat_id, msg.message_id, "Banned sticker", user)
         return
 
     if msg.text:
