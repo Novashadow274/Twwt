@@ -1,348 +1,155 @@
 # commands/warn.py
-import sqlite3
-from datetime import datetime, timedelta
-from telegram import (
-    Update,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    ChatPermissions
-)
-from telegram.ext import ContextTypes, CallbackQueryHandler
-from config import OWNER_ID, ADMIN_IDS, GROUP_ID
-import logging
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ContextTypes
+from telegram.constants import ChatAction
+from telegram.error import BadRequest
+from db import add_warning, get_warning_count, remove_warning, is_muted, set_muted
+from config import OWNER_ID, LOG_CHANNEL
+from datetime import timedelta
 
-# Database setup
-DB_FILE = "warnings.db"
-
-def init_db():
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS warnings (
-            user_id INTEGER,
-            chat_id INTEGER,
-            warnings INTEGER DEFAULT 0,
-            last_warn_time TIMESTAMP,
-            mute_time TIMESTAMP,
-            last_rwarn_time TIMESTAMP,
-            PRIMARY KEY (user_id, chat_id)
-        )
-    ''')
-    conn.commit()
-    conn.close()
-
-init_db()
-
-# Warning messages templates
-WARNING_MESSAGES = [
-    "Well, it's okay",
-    "Follow the rules",
-    "Read the rules or leave",
-    "Not here to babysit",
-    "You're pushing it"
-]
-
-async def get_user_warnings(user_id, chat_id):
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute('SELECT warnings, mute_time FROM warnings WHERE user_id=? AND chat_id=?', (user_id, chat_id))
-    result = cursor.fetchone()
-    conn.close()
-    return result or (0, None)
-
-async def update_warnings(user_id, chat_id, increment=True):
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    now = datetime.now().isoformat()
-    
-    if increment:
-        cursor.execute('''
-            INSERT INTO warnings (user_id, chat_id, warnings, last_warn_time) 
-            VALUES (?, ?, 1, ?)
-            ON CONFLICT(user_id, chat_id) DO UPDATE SET 
-            warnings = warnings + 1, last_warn_time = ?
-        ''', (user_id, chat_id, now, now))
-    else:
-        cursor.execute('''
-            UPDATE warnings 
-            SET warnings = MAX(0, warnings - 1), last_rwarn_time = ?
-            WHERE user_id=? AND chat_id=?
-        ''', (now, user_id, chat_id))
-    
-    conn.commit()
-    conn.close()
-
-async def set_mute_time(user_id, chat_id, mute_duration=24):
-    mute_time = (datetime.now() + timedelta(hours=mute_duration)).isoformat()
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute('''
-        INSERT INTO warnings (user_id, chat_id, mute_time) 
-        VALUES (?, ?, ?)
-        ON CONFLICT(user_id, chat_id) DO UPDATE SET mute_time = ?
-    ''', (user_id, chat_id, mute_time, mute_time))
-    conn.commit()
-    conn.close()
-    return mute_time
-
-async def is_muted(user_id, chat_id):
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute('SELECT mute_time FROM warnings WHERE user_id=? AND chat_id=?', (user_id, chat_id))
-    result = cursor.fetchone()
-    conn.close()
-    
-    if result and result[0]:
-        mute_time = datetime.fromisoformat(result[0])
-        return mute_time > datetime.now()
-    return False
-
-async def can_rwarn(admin_id, user_id, chat_id):
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT last_rwarn_time FROM warnings 
-        WHERE user_id=? AND chat_id=?
-    ''', (user_id, chat_id))
-    result = cursor.fetchone()
-    conn.close()
-    
-    if not result or not result[0]:
-        return True
-        
-    last_rwarn = datetime.fromisoformat(result[0])
-    return (datetime.now() - last_rwarn) >= timedelta(hours=24)
-
-async def warn_user_auto(context, user, chat_id):
-    """Automatically warn user for spam"""
-    current_warnings, _ = await get_user_warnings(user.id, chat_id)
-    
-    if current_warnings >= 5:  # Already at max warnings
-        return
-    
-    await update_warnings(user.id, chat_id)
-    current_warnings += 1
-    
-    warning_msg = WARNING_MESSAGES[min(current_warnings - 1, len(WARNING_MESSAGES) - 1)]
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("Warning ❗", callback_data=f"warn_ack:{user.id}")]
-    ])
-    
-    warn_message = await context.bot.send_message(
-        chat_id,
-        f"{user.first_name}\n{warning_msg}",
-        reply_markup=keyboard
-    )
-    
-    # Schedule message deletion after 10 hours
-    context.job_queue.run_once(
-        lambda _: warn_message.delete(), 
-        10 * 3600
-    )
+WARNING_MESSAGES = {
+    1: "{} 1 Well, it's okay",
+    2: "{} 2 Follow the rules",
+    3: "{} 3 Read the rules or leave",
+    4: "{} 4 Not here to babysit",
+    5: "{} 5You're pushing it",
+    6: "{} Done wasting time. 24hr sleep"
+}
 
 async def warn(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     chat = update.effective_chat
-    message = update.effective_message
-    
-    # Check if user is admin/owner
-    if user.id not in ADMIN_IDS and user.id != OWNER_ID:
-        reply = await message.reply_text(f"{user.first_name} you can't, give up")
-        context.job_queue.run_once(lambda _: reply.delete(), 300)
-        await message.delete()
+
+    if not await is_authorized(update):
+        await send_temp_message(update, f"{user.first_name} can't warn anyone because I think you are not admin here.")
         return
-    
-    # Get target user
-    target = None
-    if message.reply_to_message:
-        target = message.reply_to_message.from_user
-    elif context.args:
-        arg = context.args[0]
-        try:
-            if arg.startswith('@'):
-                target = await context.bot.get_chat(arg)
-            else:
-                target = await context.bot.get_chat(int(arg))
-        except Exception:
-            pass
-    
+
+    target = await extract_target_user(update, context)
     if not target:
-        reply = await message.reply_text("Reply to a user or specify @username/ID to warn them.")
-        context.job_queue.run_once(lambda _: reply.delete(), 300)
-        await message.delete()
         return
-    
-    # Check if target is admin/owner
-    if target.id in ADMIN_IDS or target.id == OWNER_ID:
-        await message.delete()
+
+    if user.id == target.id:
+        return  # No self-warn
+
+    member = await chat.get_member(target.id)
+    if member.status in ("administrator", "creator") or target.id == OWNER_ID:
+        return  # Cannot warn admins/owner
+
+    if await is_muted(target.id):
+        await send_temp_message(update, f"{target.first_name}\nAlready muted 😖")
         return
-    
-    # Check if target is already muted/banned
-    if await is_muted(target.id, chat.id):
-        reply = await message.reply_text(f"{target.first_name}\nAlready muted 😖")
-        context.job_queue.run_once(lambda _: reply.delete(), 300)
-        await message.delete()
-        return
-    
-    # Get current warnings
-    current_warnings, mute_time = await get_user_warnings(target.id, chat.id)
-    
-    # Handle 6th warning (mute)
-    if current_warnings >= 5:
-        mute_until = await set_mute_time(target.id, chat.id, 24)
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("Muted 😴", callback_data=f"mute_ack:{target.id}")]
-        ])
-        
-        mute_message = await message.reply_text(
-            f"{target.first_name}\nDone wasting time. 24hr sleep",
-            reply_markup=keyboard
-        )
-        
-        # Schedule message deletion after 24 hours
-        context.job_queue.run_once(
-            lambda _: mute_message.delete(), 
-            24 * 3600
-        )
-        
-        # Mute the user
+
+    warning_count = add_warning(target.id)
+    warn_text = WARNING_MESSAGES.get(warning_count, f"{target.first_name} Warning {warning_count}")
+
+    if warning_count < 6:
+        keyboard = InlineKeyboardMarkup.from_button(InlineKeyboardButton("Warning ❗", callback_data=f"warn:{target.id}"))
+        msg = await update.message.reply_text(warn_text.format(target.first_name), reply_markup=keyboard)
+        context.job_queue.run_once(delete_message_job, 36000, data=msg)  # 10 hours
+    else:
+        set_muted(target.id)
         try:
             await context.bot.restrict_chat_member(
-                chat.id, target.id,
-                permissions=ChatPermissions(
-                    can_send_messages=False,
-                    can_send_media_messages=False,
-                    can_send_polls=False,
-                    can_send_other_messages=False,
-                    can_add_web_page_previews=False,
-                    can_change_info=False,
-                    can_invite_users=False,
-                    can_pin_messages=False
-                ),
-                until_date=datetime.fromisoformat(mute_until)
+                chat.id,
+                target.id,
+                permissions=ChatPermissions(can_send_messages=False),
+                until_date=timedelta(hours=24)
             )
-        except Exception as e:
-            logging.error(f"Error muting user: {e}")
-        
-        await message.delete()
-        return
-    
-    # Increment warnings
-    await update_warnings(target.id, chat.id)
-    current_warnings += 1
-    
-    # Send warning message with button
-    warning_msg = WARNING_MESSAGES[min(current_warnings - 1, len(WARNING_MESSAGES) - 1)]
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("Warning ❗", callback_data=f"warn_ack:{target.id}")]
-    ])
-    
-    warn_message = await message.reply_text(
-        f"{target.first_name}\n{warning_msg}",
-        reply_markup=keyboard
-    )
-    
-    # Schedule message deletion after 10 hours
-    context.job_queue.run_once(
-        lambda _: warn_message.delete(), 
-        10 * 3600
-    )
-    
-    await message.delete()
+        except BadRequest:
+            pass
+
+        msg = await update.message.reply_text(warn_text.format(target.first_name))
+        context.job_queue.run_once(delete_message_job, 86400, data=msg)  # 24 hours
+        await context.bot.send_message(
+            chat_id=target.id,
+            text="You've been muted for 24 hours because you received 6 warnings. It's time to sleep ⏳😴"
+        )
+
+    await update.message.delete()
 
 async def rwarn(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     chat = update.effective_chat
-    message = update.effective_message
-    
-    # Check if user is admin/owner
-    if user.id not in ADMIN_IDS and user.id != OWNER_ID:
-        reply = await message.reply_text(f"{user.first_name} you can't remove warnings because I think you are not admin here.")
-        context.job_queue.run_once(lambda _: reply.delete(), 300)
-        await message.delete()
-        return
-    
-    # Get target user
-    target = None
-    if message.reply_to_message:
-        target = message.reply_to_message.from_user
-    elif context.args:
-        arg = context.args[0]
-        try:
-            if arg.startswith('@'):
-                target = await context.bot.get_chat(arg)
-            else:
-                target = await context.bot.get_chat(int(arg))
-        except Exception:
-            pass
-    
-    if not target:
-        reply = await message.reply_text("Reply to a user or specify @username/ID to remove their warning.")
-        context.job_queue.run_once(lambda _: reply.delete(), 300)
-        await message.delete()
-        return
-    
-    # Check if target is admin/owner
-    if target.id in ADMIN_IDS or target.id == OWNER_ID:
-        await message.delete()
-        return
-    
-    # Check if can remove warning
-    if not await can_rwarn(user.id, target.id, chat.id):
-        reply = await message.reply_text("You've already given them a break this cycle.")
-        context.job_queue.run_once(lambda _: reply.delete(), 300)
-        await message.delete()
-        return
-    
-    # Get current warnings
-    current_warnings, _ = await get_user_warnings(target.id, chat.id)
-    
-    if current_warnings <= 0:
-        reply = await message.reply_text("Can't undo what hasn't happened. No warnings to remove.")
-        context.job_queue.run_once(lambda _: reply.delete(), 300)
-        await message.delete()
-        return
-    
-    # Check if target is muted
-    if await is_muted(target.id, chat.id):
-        reply = await message.reply_text("That user is already muted. Let them rest.")
-        context.job_queue.run_once(lambda _: reply.delete(), 300)
-        await message.delete()
-        return
-    
-    # Decrement warnings
-    await update_warnings(target.id, chat.id, increment=False)
-    
-    reply = await message.reply_text(f"{target.first_name} Your warning has been lifted! Just don't go wild now 😊")
-    context.job_queue.run_once(lambda _: reply.delete(), 300)
-    await message.delete()
 
+    if not await is_authorized(update):
+        await send_temp_message(update, f"{user.first_name} can't remove warnings because I think you are not admin here.")
+        return
+
+    target = await extract_target_user(update, context)
+    if not target:
+        return
+
+    if user.id == target.id:
+        return  # No self-rwarn
+
+    member = await chat.get_member(target.id)
+    if member.status in ("administrator", "creator") or target.id == OWNER_ID:
+        return
+
+    if await is_muted(target.id):
+        await send_temp_message(update, f"{target.first_name}\nThat user is already muted. Let them rest.")
+        return
+
+    count = get_warning_count(target.id)
+    if count == 0:
+        await send_temp_message(update, "Can’t undo what hasn’t happened. No warnings to remove.")
+        return
+
+    count = remove_warning(target.id)
+    msg = await update.message.reply_text(f"{target.first_name} Your warning has been lifted! Just don’t go wild now 😊")
+    context.job_queue.run_once(delete_message_job, 60, data=msg)  # auto-delete after 1 minute
+    await update.message.delete()
+
+# Utility: Check if user is admin/owner
+async def is_authorized(update: Update) -> bool:
+    user = update.effective_user
+    chat = update.effective_chat
+    member = await chat.get_member(user.id)
+    return user.id == OWNER_ID or member.status in ("administrator", "creator")
+
+# Utility: Extract target user from reply, @username, or ID
+async def extract_target_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.reply_to_message:
+        return update.message.reply_to_message.from_user
+    if context.args:
+        arg = context.args[0]
+        if arg.startswith("@"):
+            try:
+                user = await context.bot.get_chat(arg)
+                return user
+            except Exception:
+                return None
+        try:
+            user_id = int(arg)
+            user = await context.bot.get_chat(user_id)
+            return user
+        except Exception:
+            return None
+    return None
+
+# Utility: Temporary message deletion
+async def send_temp_message(update, text):
+    msg = await update.message.reply_text(text)
+    update.message.delete()
+    update.message.chat.send_action(ChatAction.TYPING)
+    update.message.bot.job_queue.run_once(delete_message_job, 60, data=msg)
+
+# Utility: Delete message
+async def delete_message_job(context: ContextTypes.DEFAULT_TYPE):
+    msg = context.job.data
+    try:
+        await msg.delete()
+    except:
+        pass
+
+# Handle inline button click
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    data = query.data
-    user = query.from_user
-    
-    if data.startswith("warn_ack:"):
-        target_id = int(data.split(":")[1])
-        
-        if user.id == target_id:
-            await query.answer("Please note that if you receive six warnings, you will be muted 🤷‍♀️")
-            await query.message.delete()
-        else:
-            await query.answer("Mind your own business 😬", show_alert=True)
-    
-    elif data.startswith("mute_ack:"):
-        target_id = int(data.split(":")[1])
-        
-        if user.id == target_id:
-            await query.answer("You've been muted for 24 hours because you received 6 warnings. It's time to sleep ⏳😴")
-            await query.message.delete()
-        else:
-            await query.answer("Mind your own business 😬", show_alert=True)
-    
     await query.answer()
+    user_id = int(query.data.split(":")[1])
 
-def add_handlers(application):
-    application.add_handler(CommandHandler("warn", warn))
-    application.add_handler(CommandHandler("rwarn", rwarn))
-    application.add_handler(CallbackQueryHandler(button_callback))
+    if query.from_user.id == user_id:
+        await query.message.delete()
+        await query.answer("Alert: Pope\nPlease note that if you receive six warnings, you will be muted 🤷‍♀️")
+    else:
+        await query.answer("Mind your own business 😬", show_alert=True)
