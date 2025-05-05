@@ -1,36 +1,41 @@
 # commands/ban_words.py
 from telegram import Update
-from telegram.ext import ContextTypes
-from config import OWNER_ID, LOG_CHANNEL
-from logic import banned_words
+from telegram.ext import ContextTypes, CommandHandler
+from config import OWNER_ID
+import logic
 
 async def banwd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    if user.id != OWNER_ID:
+    if update.effective_user.id != OWNER_ID:
+        await update.message.reply_text("Only the owner can use this command.")
         return
+    
     if not context.args:
-        await update.message.reply_text("Usage: /banwd <word>")
+        await update.message.reply_text("Please provide a word to ban.")
         return
-    word = context.args[0].lower()
-    if word not in banned_words:
-        banned_words.append(word)
-        # Update log channel description (store banned words list)
-        desc = ", ".join(banned_words)
-        await context.bot.set_chat_description(LOG_CHANNEL, desc)
-    await update.message.delete()
-    await context.bot.send_message(LOG_CHANNEL, f"📝 Banned word added: {word}")
+    
+    word = ' '.join(context.args).lower()
+    if word not in logic.banned_words:
+        logic.banned_words.append(word)
+        await update.message.reply_text(f"Word '{word}' added to banned list.")
+    else:
+        await update.message.reply_text(f"Word '{word}' is already banned.")
 
 async def unwd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    if user.id != OWNER_ID:
+    if update.effective_user.id != OWNER_ID:
+        await update.message.reply_text("Only the owner can use this command.")
         return
+    
     if not context.args:
-        await update.message.reply_text("Usage: /unwd <word>")
+        await update.message.reply_text("Please provide a word to unban.")
         return
-    word = context.args[0].lower()
-    if word in banned_words:
-        banned_words.remove(word)
-        desc = ", ".join(banned_words)
-        await context.bot.set_chat_description(LOG_CHANNEL, desc)
-    await update.message.delete()
-    await context.bot.send_message(LOG_CHANNEL, f"🗑️ Banned word removed: {word}")
+    
+    word = ' '.join(context.args).lower()
+    if word in logic.banned_words:
+        logic.banned_words.remove(word)
+        await update.message.reply_text(f"Word '{word}' removed from banned list.")
+    else:
+        await update.message.reply_text(f"Word '{word}' wasn't in the banned list.")
+
+def add_handlers(application):
+    application.add_handler(CommandHandler("banwd", banwd))
+    application.add_handler(CommandHandler("unwd", unwd))
