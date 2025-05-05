@@ -77,5 +77,7 @@ def run_health_server():
 
 if __name__ == "__main__":
     threading.Thread(target=run_health_server, daemon=True).start()
+    from db import init_db
+    init_db()
     app = build_app()
-    app.run_polling() 
+    app.run_polling()
