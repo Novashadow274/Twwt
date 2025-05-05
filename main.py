@@ -2,14 +2,15 @@
 import logging
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
+from telegram import ChatPermissions
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, CallbackQueryHandler
 from telegram.error import Conflict as ConflictError
 import config
 import logic
 
 from commands.ban import ban, unban
 from commands.mute import mute, tpmute, unmute
-from commands.warn import warn, unwarn
+from commands.warn import warn, rwarn, add_handlers
 from commands.info_me import info, me
 from commands.admin import promote, demote
 from commands.clean import clean, track_messages
@@ -40,7 +41,7 @@ def build_app():
     app.add_handler(CommandHandler("tpmute", tpmute))
     app.add_handler(CommandHandler("unmute", unmute))
     app.add_handler(CommandHandler("warn", warn))
-    app.add_handler(CommandHandler("unwarn", unwarn))
+    app.add_handler(CommandHandler("rwarn", rwarn))
     app.add_handler(CommandHandler("info", info))
     app.add_handler(CommandHandler("me", me))
     app.add_handler(CommandHandler("promote", promote))
@@ -52,9 +53,12 @@ def build_app():
     app.add_handler(CommandHandler("banstk", banstk))
     app.add_handler(CommandHandler("unbanstk", unbanstk))
 
+    # Add warn handlers (buttons)
+    add_handlers(app)
+
     # Message handlers
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, track_messages))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, logic.handle_message))
+    app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, logic.handle_message))
 
     # Global error handler
     app.add_error_handler(error_handler)
