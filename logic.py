@@ -1,19 +1,18 @@
 # logic.py
 import re
-import time
-import logging
-from telegram import ChatPermissions
-from config import OWNER_ID, LOG_CHANNEL, GROUP_ID, ADMIN_IDS
-from commands.warn import warn_user_auto
+from telegram import ChatPermissions, MessageEntity
+from config import OWNER_ID, LOG_CHANNEL, GROUP_ID
+from db import add_warning
+from commands.warn import send_warning_message
+from utils import is_admin_or_owner
 
-# Initialize banned words and stickers lists
-banned_words = []
-banned_stickers = []
+SPAM_MEDIA_TYPES = {
+    "photo", "video", "animation", "voice", "document", "sticker",
+}
 
-# Spam detection variables
-user_last_message = {}
-spam_threshold = 5  # messages
-spam_window = 10    # seconds
+SPAM_COMMAND_LIMIT = 3  # non-admin command spam
+
+user_command_counts = {}
 
 async def handle_message(update, context):
     msg = update.effective_message
@@ -22,80 +21,43 @@ async def handle_message(update, context):
 
     user = update.effective_user
     chat_id = update.effective_chat.id
+    user_id = user.id
 
-    # Skip if not in monitored group
     if GROUP_ID and chat_id != GROUP_ID:
         return
 
-    # Skip if message is from admin/owner
-    if user.id in ADMIN_IDS or user.id == OWNER_ID:
+    # Ignore admins/owner
+    member = await context.bot.get_chat_member(chat_id, user_id)
+    if is_admin_or_owner(user_id, member):
         return
 
-    # Spam detection
-    current_time = time.time()
-    if user.id in user_last_message:
-        last_time, count = user_last_message[user.id]
-        if current_time - last_time < spam_window:
-            count += 1
-            if count >= spam_threshold:
-                await warn_user_auto(context, user, chat_id)
-                await delete_and_log(context, chat_id, msg.message_id, "Spam detected", user)
-                user_last_message[user.id] = (current_time, 0)
-                return
-            user_last_message[user.id] = (last_time, count)
+    # Handle media-based spam
+    if any(getattr(msg, media, None) for media in SPAM_MEDIA_TYPES):
+        await msg.delete()
+        await add_warning(context, chat_id, user)
+        return
+
+    # Handle spammy commands or unknown commands
+    if msg.text and msg.text.startswith("/"):
+        command = msg.text.split()[0]
+        if not context.bot.get_commands():  # fallback
+            known_commands = ["/warn", "/rwarn", "/ban", "/mute", "/tpmute", "/unmute", "/unban",
+                              "/info", "/me", "/promote", "/demote", "/clean", "/report", "/banwd",
+                              "/unwd", "/banstk", "/unbanstk"]
         else:
-            user_last_message[user.id] = (current_time, 1)
-    else:
-        user_last_message[user.id] = (current_time, 1)
+            known_commands = [f"/{cmd.command}" for cmd in context.bot.get_commands()]
+        if command not in known_commands:
+            await msg.delete()
+            await add_warning(context, chat_id, user)
+            return
 
-    # Check banned words if text message
-    if msg.text:
-        text = msg.text.lower()
-        for word in banned_words:
-            if word.lower() in text:
-                await warn_user_auto(context, user, chat_id)
-                await delete_and_log(context, chat_id, msg.message_id, f"Banned word: {word}", user)
-                return
-
-    # Handle different message types
-    if msg.forward_date or msg.forward_from:
-        await delete_and_log(context, chat_id, msg.message_id, "Forwarded message", user)
+    # Detect spammy symbols/emojis
+    if re.search(r'https?://', msg.text or "", re.IGNORECASE):
+        await msg.delete()
+        await add_warning(context, chat_id, user)
         return
 
-    if msg.sticker and msg.sticker.set_name in banned_stickers:
-        await warn_user_auto(context, user, chat_id)
-        await delete_and_log(context, chat_id, msg.message_id, "Banned sticker", user)
+    if len(re.findall(r'[^\w\s,]', msg.text or "")) > 10:
+        await msg.delete()
+        await add_warning(context, chat_id, user)
         return
-
-    if msg.text:
-        await handle_text_message(msg, context, chat_id, user)
-    elif msg.photo or msg.video or msg.gif or msg.document or msg.sticker or msg.voice:
-        await warn_user_auto(context, user, chat_id)
-        await delete_and_log(context, chat_id, msg.message_id, "Media spam", user)
-
-async def handle_text_message(msg, context, chat_id, user):
-    text = msg.text or ""
-    
-    if re.search(r'https?://', text, re.IGNORECASE):
-        await delete_and_log(context, chat_id, msg.message_id, "Link posted", user)
-        return
-
-    if len(re.findall(r'[^\w\s,]', text)) > 10:
-        await delete_and_log(context, chat_id, msg.message_id, "Excessive emojis/symbols", user)
-        return
-
-async def delete_and_log(context, chat_id, message_id, reason, user):
-    try:
-        await context.bot.delete_message(chat_id, message_id)
-    except Exception as e:
-        logging.error(f"[Delete Error] {e}")
-
-    try:
-        mention = user.mention_html() if user else "Unknown user"
-        log_text = (
-            f"🗑️ Deleted message from {mention} in chat <code>{chat_id}</code>.\n"
-            f"Reason: <b>{reason}</b>"
-        )
-        await context.bot.send_message(LOG_CHANNEL, log_text, parse_mode="HTML")
-    except Exception as e:
-        logging.error(f"[Log Error] {e}")
